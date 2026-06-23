@@ -23,7 +23,7 @@ class GitAgent(Agent):
     )
 
     # The skills this agent is allowed to use, by registered name.
-    SKILL_NAMES = ["git_stats", "github_diff"]
+    SKILL_NAMES = ["git-stats", "github-diff"]
 
     def __init__(
         self,

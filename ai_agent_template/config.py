@@ -37,5 +37,9 @@ class Settings:
     # Agent loop
     agent_max_steps: int = _int("AGENT_MAX_STEPS", 8)
 
+    # Skills: directory to discover SKILL.md skill folders in.
+    # Empty = the project's top-level `skills/` directory.
+    skills_dir: str = os.getenv("SKILLS_DIR", "")
+
 
 settings = Settings()

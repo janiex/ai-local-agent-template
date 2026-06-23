@@ -12,7 +12,7 @@ import argparse
 import sys
 from typing import List, Optional
 
-from . import skills as _skills  # noqa: F401 — ensures built-in skills register
+from . import skills as _skills  # provides all_skills() (lazy SKILL.md discovery)
 from .agents import AGENTS
 from .config import settings
 from .llm.factory import available_providers, get_provider

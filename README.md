@@ -16,6 +16,13 @@ out so you can add new skills and new agents by dropping in a single file each.
 
 ```
 ai-agent-template/
+├── skills/                  # dedicated skills dir (Anthropic Agent Skills layout)
+│   ├── git-stats/
+│   │   ├── SKILL.md         #   metadata (name, description, ...) + docs
+│   │   └── skill.py         #   the Skill subclass: parameters + run()
+│   └── github-diff/
+│       ├── SKILL.md
+│       └── skill.py
 ├── ai_agent_template/
 │   ├── config.py            # env/.env settings (import-light)
 │   ├── cli.py               # `ai-agent run | list | health`
@@ -24,23 +31,30 @@ ai-agent-template/
 │   │   ├── factory.py       #   get_provider("ollama" | "anthropic")
 │   │   ├── ollama_provider.py
 │   │   └── anthropic_provider.py
-│   ├── skills/              # capabilities the agent can call
+│   ├── skills/              # the skills *framework* (not the skills themselves)
 │   │   ├── base.py          #   Skill ABC + SkillResult
-│   │   ├── registry.py      #   @register decorator + discovery
-│   │   ├── git_stats.py
-│   │   └── github_diff.py
+│   │   ├── loader.py        #   discovers skills/ folders, reads SKILL.md
+│   │   ├── registry.py      #   lazy discovery + lookup
+│   │   └── _run.py          #   safe subprocess helper
 │   └── agents/              # agents bundle skills + a persona
 │       ├── base.py          #   Agent: the reason→act→observe loop
 │       └── git_agent.py     #   the reference agent
 └── tests/                   # fast tests, no network/LLM required
 ```
 
+Skills follow the **[Anthropic Agent Skills](https://www.anthropic.com/news/skills)
+layout**: each skill is a folder under `skills/` with a `SKILL.md` (YAML
+frontmatter metadata + human-readable docs) and a `skill.py` (the executable
+`Skill` subclass). The loader reads each `SKILL.md`, stamps its metadata
+(`name`, `description`, `version`, `license`, `metadata`) onto the class, and
+registers it — so docs and code can't drift apart.
+
 Three small abstractions keep the parts decoupled:
 
 | Layer | Contract | Add one by… |
 |-------|----------|-------------|
 | **LLMProvider** | `stream(system, messages)` → text; `complete` derived | subclass + wire into `factory.get_provider` |
-| **Skill** | `run(**args)` → `SkillResult`; self-describing `parameters` | subclass + `@register` |
+| **Skill** | `SKILL.md` metadata + a `skill.py` whose class implements `run(**args)` → `SkillResult` | drop a folder into `skills/` |
 | **Agent** | inherits the loop; declares which skills + persona | subclass `Agent` + add to `agents.AGENTS` |
 
 The agent talks to the LLM with a **provider-agnostic JSON protocol** (a
@@ -94,16 +108,39 @@ goes to stdout.
 
 ### Add a skill
 
-Create `ai_agent_template/skills/my_skill.py`:
+Create a folder `skills/my-skill/` with two files. No code changes elsewhere —
+it's discovered automatically.
+
+**`skills/my-skill/SKILL.md`** — metadata (frontmatter) + docs:
+
+```markdown
+---
+name: my-skill
+description: >-
+  What it does and, crucially, WHEN the agent should reach for it. This text is
+  shown to the LLM, so make the trigger conditions explicit.
+version: 1.0.0
+license: MIT
+metadata:
+  author: you
+  category: example
+  read_only: true
+  entrypoint: skill.py
+---
+
+# My Skill
+
+## Parameters
+- `query` (string, required): ...
+```
+
+**`skills/my-skill/skill.py`** — the executable class (metadata comes from
+`SKILL.md`, so just declare `parameters` + `run`):
 
 ```python
-from .base import Skill, SkillResult
-from .registry import register
+from ai_agent_template.skills.base import Skill, SkillResult
 
-@register
 class MySkill(Skill):
-    name = "my_skill"
-    description = "What it does and when the agent should use it."
     parameters = {
         "query": {"type": "string", "description": "...", "required": True},
     }
@@ -113,9 +150,13 @@ class MySkill(Skill):
         return SkillResult(ok=True, output="...", data={})
 ```
 
-Import it in `skills/__init__.py` (one line) so it registers, then add its
-name to an agent's `SKILL_NAMES`. Return `SkillResult(ok=False, ...)` for
-expected failures so the agent can recover instead of crashing.
+Then add `"my-skill"` to an agent's `SKILL_NAMES`. Required fields are `name`
+(lowercase, hyphenated) and `description`; the folder name must match `name`.
+Return `SkillResult(ok=False, ...)` for expected failures so the agent can
+recover instead of crashing.
+
+> Skills are discovered from the project's top-level `skills/` directory by
+> default. Point `SKILLS_DIR` at another path to load skills from elsewhere.
 
 ### Add an agent
 

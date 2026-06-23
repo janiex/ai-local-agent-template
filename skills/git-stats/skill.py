@@ -1,21 +1,18 @@
-"""Skill: summarize repository statistics from local git history."""
+"""Implementation for the `git-stats` skill.
+
+Metadata (name, description, version, license, ...) lives in this skill's
+`SKILL.md`; the loader applies it to this class at registration time. Here we
+only declare the executable parameter schema and the `run` behaviour.
+"""
 from __future__ import annotations
 
 from typing import Any
 
-from ._run import have, run
-from .base import Skill, SkillResult
-from .registry import register
+from ai_agent_template.skills._run import have, run
+from ai_agent_template.skills.base import Skill, SkillResult
 
 
-@register
 class GitStatsSkill(Skill):
-    name = "git_stats"
-    description = (
-        "Report statistics about a local git repository: total commits, "
-        "contributors, recent activity, and the most-changed files. Use this "
-        "to understand the health or history of a repo."
-    )
     parameters = {
         "path": {
             "type": "string",

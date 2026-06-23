@@ -1,6 +1,7 @@
 # Core runtime dependencies (local LLM via Ollama needs nothing extra).
 python-dotenv>=1.0
 requests>=2.31
+PyYAML>=6.0  # parse SKILL.md frontmatter
 
 # Uncomment to enable the external Claude API backend:
 # anthropic>=0.39

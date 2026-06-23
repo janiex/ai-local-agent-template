@@ -1,26 +1,17 @@
-"""Skill: fetch a diff from GitHub (a pull request) or between local refs.
+"""Implementation for the `github-diff` skill.
 
-Prefers the GitHub CLI (`gh`) for PR diffs because it handles auth, forks, and
-private repos. Falls back to a local `git diff` between two refs when no PR is
-given, so the skill is still useful without network access.
+Metadata lives in this skill's `SKILL.md`; the loader applies it to this class
+at registration time. Here we declare the parameter schema and `run` behaviour.
 """
 from __future__ import annotations
 
 from typing import Any, List
 
-from ._run import have, run
-from .base import Skill, SkillResult
-from .registry import register
+from ai_agent_template.skills._run import have, run
+from ai_agent_template.skills.base import Skill, SkillResult
 
 
-@register
 class GitHubDiffSkill(Skill):
-    name = "github_diff"
-    description = (
-        "Show a code diff. Given a GitHub pull request number, fetch that PR's "
-        "diff via the GitHub CLI. Otherwise, diff two local git refs (base..head). "
-        "Use this to review what changed in a PR or between branches/commits."
-    )
     parameters = {
         "pr": {
             "type": "integer",
