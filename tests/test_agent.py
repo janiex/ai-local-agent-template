@@ -71,6 +71,31 @@ def test_agent_reports_unknown_skill():
     assert result.answer == "handled"
 
 
+def test_agent_does_not_rerun_identical_calls():
+    # Two identical echo calls, then finalize. The skill must run only once.
+    calls = []
+
+    class CountingSkill(EchoSkill):
+        name = "echo"
+
+        def run(self, **kwargs):
+            calls.append(kwargs)
+            return super().run(**kwargs)
+
+    provider = FakeProvider(
+        [
+            '{"action":"echo","args":{"text":"hi"}}',
+            '{"action":"echo","args":{"text":"hi"}}',
+            '{"action":"final","answer":"done"}',
+        ]
+    )
+    agent = Agent(provider, [CountingSkill()])
+    result = agent.run("repeat")
+    assert result.answer == "done"
+    assert len(calls) == 1  # second identical call was served from cache
+    assert "already made this exact call" in result.steps[1].observation
+
+
 def test_agent_stops_at_max_steps():
     # Always asks to call a skill, never finalizes.
     provider = FakeProvider(['{"action":"echo","args":{"text":"loop"}}'] * 20)

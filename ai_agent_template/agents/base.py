@@ -83,6 +83,7 @@ class Agent:
     def run(self, task: str) -> AgentResult:
         messages = [{"role": "user", "content": f"Task: {task}"}]
         steps: List[Step] = []
+        seen: Dict[str, str] = {}  # signature -> observation, to break repeat loops
 
         for _ in range(self.max_steps):
             raw = self.provider.complete(self._system_prompt(), messages)
@@ -105,8 +106,21 @@ class Agent:
                 steps.append(Step(thought, "final", {}, answer))
                 return AgentResult(answer, steps, "final")
 
-            observation = self._dispatch(action, decision.get("args", {}) or {})
-            step = Step(thought, action, decision.get("args", {}) or {}, observation)
+            args = decision.get("args", {}) or {}
+            signature = f"{action}|{json.dumps(args, sort_keys=True, default=str)}"
+            if signature in seen:
+                # The model is repeating an identical call — don't re-run it;
+                # hand back the prior result and steer it somewhere new.
+                observation = (
+                    seen[signature]
+                    + "\n(You already made this exact call and got the result above. "
+                    "Try different arguments, a different skill, or reply with "
+                    'action "final".)'
+                )
+            else:
+                observation = self._dispatch(action, args)
+                seen[signature] = observation
+            step = Step(thought, action, args, observation)
             steps.append(step)
 
             # Feed the action + observation back so the model can continue.

@@ -49,9 +49,9 @@ class GitHubDiffSkill(Skill):
         self.validate(kwargs)
         path = str(kwargs.get("path") or ".")
         max_lines = int(kwargs.get("max_lines") or 400)
-        pr = kwargs.get("pr")
+        pr = self._as_pr_number(kwargs.get("pr"))
 
-        if pr not in (None, ""):
+        if pr is not None:
             return self._pr_diff(pr, kwargs.get("repo"), path, max_lines)
         return self._local_diff(
             str(kwargs.get("base") or "main"),
@@ -59,6 +59,19 @@ class GitHubDiffSkill(Skill):
             path,
             max_lines,
         )
+
+    @staticmethod
+    def _as_pr_number(value: Any):
+        """Return a positive PR number, or None.
+
+        Models often pass 0 / "" / "0" as a "no PR" placeholder, so anything that
+        is not a positive integer means "fall back to a local ref diff".
+        """
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            return None
+        return n if n > 0 else None
 
     # ---- GitHub PR diff via gh CLI ---------------------------------------
     def _pr_diff(self, pr, repo, path, max_lines) -> SkillResult:

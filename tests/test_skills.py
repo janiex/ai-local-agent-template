@@ -70,6 +70,15 @@ def test_local_diff(repo):
     assert "a.txt" in result.data["files"]
 
 
+def test_pr_zero_is_treated_as_no_pr(repo):
+    # A falsy pr placeholder (0) must fall back to the local ref diff, not `gh`.
+    result = get_skill("github-diff").run(
+        pr=0, path=str(repo), base="main", head="feature"
+    )
+    assert result.ok
+    assert result.data["added"] == 1
+
+
 def test_missing_required_param_raises():
     skill = get_skill("git-stats")
     skill.parameters = {**skill.parameters, "path": {"required": True, "type": "string"}}
