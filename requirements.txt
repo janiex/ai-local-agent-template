@@ -1,0 +1,6 @@
+# Core runtime dependencies (local LLM via Ollama needs nothing extra).
+python-dotenv>=1.0
+requests>=2.31
+
+# Uncomment to enable the external Claude API backend:
+# anthropic>=0.39

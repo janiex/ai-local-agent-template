@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ai-agent: run (git, prompt)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "ai_agent_template.cli",
+      "args": ["run", "--agent", "git", "-v", "How active is this repo recently?"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ai-agent: list",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "ai_agent_template.cli",
+      "args": ["list"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ai-agent: health",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "ai_agent_template.cli",
+      "args": ["health"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
