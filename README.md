@@ -17,9 +17,10 @@ out so you can add new skills and new agents by dropping in a single file each.
 ```
 ai-agent-template/
 ├── skills/                  # dedicated skills dir (Anthropic Agent Skills layout)
+│   ├── git-log.md           #   a declarative skill — markdown only, no code
 │   ├── git-stats/
 │   │   ├── SKILL.md         #   metadata (name, description, ...) + docs
-│   │   └── skill.py         #   the Skill subclass: parameters + run()
+│   │   └── skill.py         #   a coded skill: Skill subclass with run()
 │   └── github-diff/
 │       ├── SKILL.md
 │       └── skill.py
@@ -33,7 +34,8 @@ ai-agent-template/
 │   │   └── anthropic_provider.py
 │   ├── skills/              # the skills *framework* (not the skills themselves)
 │   │   ├── base.py          #   Skill ABC + SkillResult
-│   │   ├── loader.py        #   discovers skills/ folders, reads SKILL.md
+│   │   ├── command_skill.py #   CommandSkill: runs a declarative argv template
+│   │   ├── loader.py        #   discovers skills, reads frontmatter
 │   │   ├── registry.py      #   lazy discovery + lookup
 │   │   └── _run.py          #   safe subprocess helper
 │   └── agents/              # agents bundle skills + a persona
@@ -43,18 +45,25 @@ ai-agent-template/
 ```
 
 Skills follow the **[Anthropic Agent Skills](https://www.anthropic.com/news/skills)
-layout**: each skill is a folder under `skills/` with a `SKILL.md` (YAML
-frontmatter metadata + human-readable docs) and a `skill.py` (the executable
-`Skill` subclass). The loader reads each `SKILL.md`, stamps its metadata
-(`name`, `description`, `version`, `license`, `metadata`) onto the class, and
-registers it — so docs and code can't drift apart.
+layout** and come in two flavours, both discovered automatically from `skills/`:
+
+- **Declarative (no code):** a single markdown file `skills/<name>.md` (or a
+  folder with `SKILL.md`) whose frontmatter declares a parameter schema and an
+  `execution.command`. The loader builds a runnable skill from it. This is the
+  fastest way to add one — **drop in a file, done.**
+- **Coded:** a folder `skills/<name>/` with `SKILL.md` (metadata) + `skill.py`
+  (a `Skill` subclass) for logic too complex for a single command.
+
+Either way the frontmatter is the single source of truth for metadata (`name`,
+`description`, `version`, `license`, `metadata`), so docs and behaviour can't
+drift apart.
 
 Three small abstractions keep the parts decoupled:
 
 | Layer | Contract | Add one by… |
 |-------|----------|-------------|
 | **LLMProvider** | `stream(system, messages)` → text; `complete` derived | subclass + wire into `factory.get_provider` |
-| **Skill** | `SKILL.md` metadata + a `skill.py` whose class implements `run(**args)` → `SkillResult` | drop a folder into `skills/` |
+| **Skill** | a markdown file's frontmatter (declarative) **or** a `skill.py` `Skill` subclass (coded) | drop a `.md` (or folder) into `skills/` |
 | **Agent** | inherits the loop; declares which skills + persona | subclass `Agent` + add to `agents.AGENTS` |
 
 The agent talks to the LLM with a **provider-agnostic JSON protocol** (a
@@ -106,41 +115,56 @@ goes to stdout.
 
 ## Extending the template
 
-### Add a skill
+### Add a skill — no code (declarative)
 
-Create a folder `skills/my-skill/` with two files. No code changes elsewhere —
-it's discovered automatically.
-
-**`skills/my-skill/SKILL.md`** — metadata (frontmatter) + docs:
+Drop **one markdown file** into `skills/`. It's discovered on the next run; you
+don't touch any Python. Create `skills/my-skill.md`:
 
 ```markdown
 ---
-name: my-skill
-description: >-
-  What it does and, crucially, WHEN the agent should reach for it. This text is
-  shown to the LLM, so make the trigger conditions explicit.
+name: my-skill                  # required; must match the file name
+description: >-                  # required; shown to the LLM, so state WHEN to use it
+  What it does and when the agent should reach for it.
 version: 1.0.0
 license: MIT
 metadata:
-  author: you
-  category: example
+  category: git                 # GitAgent uses every skill with category: git
   read_only: true
-  entrypoint: skill.py
+parameters:
+  path:
+    type: string
+    description: Path to the repository.
+    required: false
+    default: "."
+execution:
+  command: ["git", "-C", "{path}", "status", "--short"]  # argv; {param} placeholders
+  requires: ["git"]             # commands that must be on PATH
+  timeout: 20
+  max_output_lines: 100
 ---
 
 # My Skill
-
-## Parameters
-- `query` (string, required): ...
+Free-form docs go here.
 ```
 
-**`skills/my-skill/skill.py`** — the executable class (metadata comes from
-`SKILL.md`, so just declare `parameters` + `run`):
+`{path}` is substituted into the argv list **as a single argument** — never
+through a shell — so values can't inject extra commands. Any parameter used in
+the command should be `required` or have a `default`. See
+[`skills/git-log.md`](skills/git-log.md) for a working example.
+
+Because `GitAgent` selects skills by `metadata.category`, a new `category: git`
+skill is immediately usable — **no agent code changes**.
+
+### Add a skill — with code
+
+When a single command isn't enough, use a folder with custom logic. Create
+`skills/my-skill/SKILL.md` (same frontmatter, minus `execution`) plus
+`skills/my-skill/skill.py`:
 
 ```python
 from ai_agent_template.skills.base import Skill, SkillResult
 
-class MySkill(Skill):
+class MySkill(Skill):                         # metadata comes from SKILL.md
     parameters = {
         "query": {"type": "string", "description": "...", "required": True},
     }
@@ -150,8 +174,6 @@ class MySkill(Skill):
         return SkillResult(ok=True, output="...", data={})
 ```
 
-Then add `"my-skill"` to an agent's `SKILL_NAMES`. Required fields are `name`
-(lowercase, hyphenated) and `description`; the folder name must match `name`.
 Return `SkillResult(ok=False, ...)` for expected failures so the agent can
 recover instead of crashing.
 
@@ -160,8 +182,9 @@ recover instead of crashing.
 
 ### Add an agent
 
-Copy `agents/git_agent.py`, set `name`, `persona`, and `SKILL_NAMES`, then
-register it in `agents/__init__.py`:
+Copy `agents/git_agent.py`, set `name`, `persona`, and how it selects skills
+(by `CATEGORY`, or pass an explicit `skills=[...]`), then register it in
+`agents/__init__.py`:
 
 ```python
 AGENTS = {"git": GitAgent, "myagent": MyAgent}

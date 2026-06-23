@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from ..llm.base import LLMProvider
 from ..skills.base import Skill
-from ..skills.registry import get_skill
+from ..skills.registry import all_skills
 from .base import Agent
 
 
@@ -22,8 +22,11 @@ class GitAgent(Agent):
         "skills, then summarizing clearly for an engineer."
     )
 
-    # The skills this agent is allowed to use, by registered name.
-    SKILL_NAMES = ["git-stats", "github-diff"]
+    # Instead of a hard-coded list, this agent uses every registered skill
+    # tagged with this category in its SKILL.md metadata. So adding a new
+    # `skills/<name>.md` with `metadata.category: git` makes it available here
+    # automatically — no code change required.
+    CATEGORY = "git"
 
     def __init__(
         self,
@@ -32,5 +35,9 @@ class GitAgent(Agent):
         skills: Optional[List[Skill]] = None,
         max_steps: Optional[int] = None,
     ):
-        resolved = skills or [get_skill(n) for n in self.SKILL_NAMES]
+        resolved = skills if skills is not None else self._discover()
         super().__init__(provider, resolved, max_steps=max_steps)
+
+    @classmethod
+    def _discover(cls) -> List[Skill]:
+        return [s for s in all_skills() if s.metadata.get("category") == cls.CATEGORY]

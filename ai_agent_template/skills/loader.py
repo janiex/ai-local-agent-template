@@ -1,14 +1,19 @@
 """Discover skills from the dedicated `skills/` directory (Anthropic layout).
 
-Each skill is a folder containing:
-  - SKILL.md   : YAML frontmatter (name, description, version, license, metadata)
-                 plus human-readable docs.
-  - skill.py   : a single `Skill` subclass implementing `run` + `parameters`.
+A skill can take one of three forms, all discovered automatically:
+
+  1. Folder + Python   : `skills/<name>/SKILL.md` + `skills/<name>/skill.py`
+                         (a `Skill` subclass with custom `run` logic).
+  2. Folder + markdown : `skills/<name>/SKILL.md` whose frontmatter declares an
+                         `execution` command — no Python needed.
+  3. Single markdown   : `skills/<name>.md` with an `execution` command — the
+                         simplest way to add a skill: just drop in one file.
 
 The loader is the single source of truth for *metadata*: it reads the
 frontmatter and stamps `name`/`description`/`version`/`license`/`metadata` onto
-the implementation class, then registers it. This keeps the docs (SKILL.md) and
-the code (skill.py) from drifting apart.
+the skill class, then registers it. For declarative skills it also builds the
+executable class (see `command_skill.CommandSkill`) from the `execution` block,
+so docs and behaviour live in one place.
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ import yaml
 from ..config import settings
 from . import registry
 from .base import Skill
+from .command_skill import CommandSkill
 
 _NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -46,22 +52,31 @@ def load_skills() -> List[str]:
         return newly
 
     for entry in sorted(root.iterdir()):
-        md = entry / "SKILL.md"
-        if not entry.is_dir() or not md.exists():
+        if entry.is_dir():
+            md = entry / "SKILL.md"
+            if not md.exists():
+                continue
+            label = f"folder {entry.name!r}"
+            expected_name = entry.name
+        elif entry.suffix == ".md" and entry.name != "README.md":
+            if not entry.read_text(encoding="utf-8").lstrip().startswith("---"):
+                continue  # a plain markdown note, not a skill
+            md = entry
+            label = f"file {entry.name!r}"
+            expected_name = entry.stem
+        else:
             continue
 
         meta, _docs = parse_skill_md(md)
         name = meta["name"]
         if name in registry.registered_names(_ensure=False):
             continue
-
-        if entry.name != name:
+        if expected_name != name:
             raise ValueError(
-                f"Skill folder {entry.name!r} does not match SKILL.md name {name!r}."
+                f"Skill {label} does not match its declared name {name!r}."
             )
 
-        impl_path = entry / str(meta.get("metadata", {}).get("entrypoint", "skill.py"))
-        cls = _load_impl_class(impl_path, name)
+        cls = _build_skill_class(entry, meta, name)
 
         # Frontmatter is canonical for metadata; stamp it onto the class.
         cls.name = name
@@ -74,6 +89,45 @@ def load_skills() -> List[str]:
         newly.append(name)
 
     return newly
+
+
+def _build_skill_class(entry: Path, meta: Dict[str, Any], name: str) -> Type[Skill]:
+    """Return the Skill class for a discovered entry.
+
+    A `skill.py` (Python) takes precedence; otherwise an `execution` block in the
+    frontmatter yields a declarative `CommandSkill`.
+    """
+    if entry.is_dir():
+        impl_path = entry / str(meta.get("metadata", {}).get("entrypoint", "skill.py"))
+        if impl_path.exists():
+            return _load_impl_class(impl_path, name)
+
+    if meta.get("execution"):
+        return _build_command_class(meta, name)
+
+    raise ValueError(
+        f"Skill {name!r} has neither a skill.py implementation nor an "
+        f"'execution' block in its frontmatter."
+    )
+
+
+def _build_command_class(meta: Dict[str, Any], name: str) -> Type[CommandSkill]:
+    """Create a CommandSkill subclass configured from the `execution` block."""
+    spec = meta.get("execution") or {}
+    command = spec.get("command")
+    if not isinstance(command, list) or not command:
+        raise ValueError(
+            f"Skill {name!r}: execution.command must be a non-empty list of argv tokens."
+        )
+    attrs: Dict[str, Any] = {
+        "parameters": meta.get("parameters", {}) or {},
+        "command": [str(tok) for tok in command],
+        "cwd_template": str(spec.get("cwd", ".")),
+        "requires": [str(r) for r in (spec.get("requires") or [])],
+        "timeout": int(spec.get("timeout", 30)),
+        "max_output_lines": int(spec.get("max_output_lines", 200)),
+    }
+    return type(f"CommandSkill_{name.replace('-', '_')}", (CommandSkill,), attrs)
 
 
 def parse_skill_md(path: Path) -> Tuple[Dict[str, Any], str]:

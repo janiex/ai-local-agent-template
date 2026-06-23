@@ -70,6 +70,28 @@ def test_local_diff(repo):
     assert "a.txt" in result.data["files"]
 
 
+def test_declarative_markdown_skill(repo):
+    # `git-log` is defined by skills/git-log.md alone — no Python implementation.
+    from ai_agent_template.skills.command_skill import CommandSkill
+
+    assert "git-log" in registered_names()
+    skill = get_skill("git-log")
+    assert isinstance(skill, CommandSkill)
+    assert skill.metadata.get("category") == "git"
+
+    result = skill.run(path=str(repo), count=5)
+    assert result.ok
+    assert "first" in result.output  # the commit subject from the fixture
+
+
+def test_git_agent_auto_discovers_category_skills():
+    # Adding a git-category skill (like git-log) makes it usable with no code.
+    from ai_agent_template.agents.git_agent import GitAgent
+
+    agent = GitAgent(provider=object())
+    assert {"git-stats", "github-diff", "git-log"} <= set(agent.skills)
+
+
 def test_pr_zero_is_treated_as_no_pr(repo):
     # A falsy pr placeholder (0) must fall back to the local ref diff, not `gh`.
     result = get_skill("github-diff").run(
