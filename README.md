@@ -10,6 +10,10 @@ The same agent runs against either a **local LLM (Ollama)** or an **external
 LLM by API (Anthropic Claude)** — you choose at runtime. The codebase is laid
 out so you can add new skills and new agents by dropping in a single file each.
 
+> 📖 For a complete, code-referenced walkthrough of how everything fits together
+> — the request lifecycle, each component, and experiments per layer — see
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ---
 
 ## Why it's structured this way
