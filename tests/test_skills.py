@@ -106,3 +106,9 @@ def test_missing_required_param_raises():
     skill.parameters = {**skill.parameters, "path": {"required": True, "type": "string"}}
     with pytest.raises(ValueError):
         skill.validate({})
+        
+def test_code_search_skill(repo):
+    skill = get_skill("code-search")
+    result = skill.run(pattern="hello", path=str(repo))   # fixture writes "hello\n"
+    assert result.ok
+    assert "a.txt" in result.output
